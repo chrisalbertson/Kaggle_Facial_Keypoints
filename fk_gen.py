@@ -18,6 +18,7 @@ from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten, Dropo
 from keras.models import Sequential
 from keras.optimizers import SGD
 from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import LearningRateScheduler, EarlyStopping
 from pandas.io.parsers import read_csv
 from skimage import exposure
 
@@ -35,6 +36,9 @@ image_shape = (imagesize_x, imagesize_y, 1)
 
 batch_size = 32
 epochs = 20
+
+lr_start = 0.2
+lr_stop  = 0.001
 
 
 def load_train_df():
@@ -127,7 +131,7 @@ def build_model():
 
     model.add(Dense(30))
 
-    sgd = SGD(lr=0.3, momentum=0.9, nesterov=True)
+    sgd = SGD(lr=lr_start, momentum=0.9, nesterov=True)
     model.compile(loss='mean_squared_error', optimizer=sgd,  metrics=['accuracy'])
     #model.compile(loss='mean_squared_error', optimizer='adam',  metrics=['accuracy'])
 
@@ -160,7 +164,7 @@ def build_tiny_model():
 
     model.add(Dense(30))
 
-    sgd = SGD(lr=0.3, momentum=0.9, nesterov=True)
+    sgd = SGD(lr=lr_start, momentum=0.9, nesterov=True)
     model.compile(loss='mean_squared_error', optimizer=sgd,  metrics=['accuracy'])
     #model.compile(loss='mean_squared_error', optimizer='adam',  metrics=['accuracy'])
 
@@ -196,7 +200,7 @@ def build_larger_model():
     model.add(Dropout(0.5))
     model.add(Dense(30))
 
-    sgd = SGD(lr=0.3,  momentum=0.9, nesterov=True)
+    sgd = SGD(lr=lr_start,  momentum=0.9, nesterov=True)
     model.compile(loss='mean_squared_error', optimizer=sgd, metrics=['accuracy'])
 
     logger.info('Model buidling and compilation finished')
@@ -310,7 +314,7 @@ def _main(args):
     # plot some training data
     if False:
         yy = halfimage * y + halfimage
-        for i in range(10):
+        for i in range(10, 1000, 100):
             img = X[i,...].reshape((96,96))
             plt_face_dots(img,yy[i,...])
 
@@ -318,8 +322,11 @@ def _main(args):
     Xtrain, Xval = X[:1500,:,:,:], X[1500:,:,:,:]
     ytrain, yval = y[:1500,:],     y[1500:,:]
 
+    early_stop = EarlyStopping(patience=100)
+    learning_rates = np.linspace(lr_start, lr_stop, epochs)
+    change_lr = LearningRateScheduler(lambda epoch: float(learning_rates[epoch]))
 
-    data_augmentation = False
+    data_augmentation = True
     if not data_augmentation:
         logging.info('Not using data augmentation.')
 
@@ -328,7 +335,8 @@ def _main(args):
                   nb_epoch=epochs,
                   verbose=verb,
                   validation_data=(Xval, yval),
-                  shuffle=True)
+                  shuffle=True,
+                  callbacks=[change_lr, early_stop])
 
 
     else:
@@ -356,9 +364,11 @@ def _main(args):
                                     steps_per_epoch = 1500 / batch_size,
                                     nb_epoch=epochs,
                                     verbose=verb,
+                                    callbacks=[change_lr, early_stop],
                                     validation_data=(Xval, yval))
 
     plt_training_history(hist)
+
 
     df_test = load_test_df()
     XT = np.vstack(df_test['Image'].values)
@@ -374,9 +384,18 @@ def _main(args):
     # Unscale the predictions back to "pixel space"
     pred = 48.0 * (pred + 1.0)
 
-    for i in range(10):
-        img = XT[i,...].reshape((96,96))
-        plt_face_dots(img,pred[i,...])
+    if False:
+        for i in range(10):
+            img = XT[i,...].reshape((96,96))
+            plt_face_dots(img,pred[i,...])
+
+
+    # compute error in predictions
+    pkey = model.predict(Xval)
+    res = pkey - yval
+    res = res * res
+    AverageErrorSquared = np.sum(res) / 30.0
+    print('Average Error Squared =', AverageErrorSquared)
 
     exit()
 

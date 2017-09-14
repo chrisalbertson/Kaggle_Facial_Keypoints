@@ -219,15 +219,18 @@ def generator_simple(features, labels, batch_size):
     """
     batch_features = np.zeros((batch_size, 96, 96, 1))
     batch_labels = np.zeros((batch_size, 30))
+
+    numfeatures = len(features)
     index = 0
     while True:
         for i in range(batch_size):
-            batch_features[i, ...] = ndi.gaussian_filter(features[index, ...], sigma=5.0)
-            batch_labels[i, ...] = labels[index, ...]
-            if index == batch_size:
+            if numfeatures >= index:
                 index = 0
             else:
                 index += 1
+
+            batch_features[i, ...] = ndi.gaussian_filter(features[index, ...], sigma=5.0)
+            batch_labels[i, ...] = labels[index, ...]
 
         yield batch_features, batch_labels
 
